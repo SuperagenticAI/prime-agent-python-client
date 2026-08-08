@@ -50,4 +50,3 @@ class PrimeProcessExited(PrimeAgentError):
         super().__init__(detail)
         self.returncode = returncode
         self.stderr = stderr
-

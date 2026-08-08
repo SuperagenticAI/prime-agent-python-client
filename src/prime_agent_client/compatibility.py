@@ -16,6 +16,10 @@ class PrimeCompatibility:
     tested: bool
     features: frozenset[str]
 
+    def supports(self, feature: str) -> bool:
+        """Return whether the detected release advertises a client capability."""
+        return feature in self.features
+
 
 _CORE_FEATURES = frozenset(
     {
@@ -51,4 +55,3 @@ def compatibility_for(version: PrimeVersion) -> PrimeCompatibility:
         tested=normalized in SUPPORTED_VERSIONS,
         features=_CORE_FEATURES,
     )
-

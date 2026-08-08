@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -40,6 +41,7 @@ class PrimeSession:
         refine_timeout: float = 600.0,
         check_version: bool = True,
         ui_handler: UIHandler | None = None,
+        logger: logging.Logger | None = None,
     ) -> None:
         launch_args: list[str] = []
         if provider:
@@ -70,12 +72,22 @@ class PrimeSession:
             cwd=self.cwd,
             env=env,
             request_timeout=request_timeout,
+            logger=logger,
         )
         self._unsubscribe_ui: Callable[[], None] | None = None
 
     @property
     def running(self) -> bool:
         return self.transport.running
+
+    @property
+    def capabilities(self) -> frozenset[str]:
+        """Capabilities declared for the detected Prime Agent version."""
+        return self.compatibility.features if self.compatibility is not None else frozenset()
+
+    def supports(self, feature: str) -> bool:
+        """Return whether compatibility metadata declares a feature."""
+        return self.compatibility is not None and self.compatibility.supports(feature)
 
     async def __aenter__(self) -> PrimeSession:
         await self.start()
@@ -104,6 +116,11 @@ class PrimeSession:
             self._unsubscribe_ui()
             self._unsubscribe_ui = None
         await self.transport.close()
+
+    async def restart(self) -> None:
+        """Replace the subprocess and repeat version and readiness checks."""
+        await self.close()
+        await self.start()
 
     async def detect_version(self) -> PrimeVersion:
         process = await asyncio.create_subprocess_exec(
@@ -157,9 +174,9 @@ class PrimeSession:
                 try:
                     remaining = deadline - asyncio.get_running_loop().time()
                     if remaining <= 0:
-                        raise TimeoutError
+                        raise asyncio.TimeoutError
                     event = await asyncio.wait_for(stream.__anext__(), timeout=remaining)
-                except TimeoutError as exc:
+                except asyncio.TimeoutError as exc:
                     with contextlib.suppress(Exception):
                         await self.abort()
                     raise PrimeRequestTimeout(
@@ -168,8 +185,12 @@ class PrimeSession:
                 except StopAsyncIteration:
                     return
                 yield event
-                if event.type == "agent_end":
+                if event.is_terminal:
                     return
+        except asyncio.CancelledError:
+            with contextlib.suppress(Exception):
+                await asyncio.shield(self.abort())
+            raise
         finally:
             await stream.aclose()
 
@@ -181,8 +202,7 @@ class PrimeSession:
         timeout: float | None = None,
     ) -> list[PrimeEvent]:
         return [
-            event
-            async for event in self.prompt_stream(message, images=images, timeout=timeout)
+            event async for event in self.prompt_stream(message, images=images, timeout=timeout)
         ]
 
     async def steer(self, message: str, *, images: Sequence[ImageContent] | None = None) -> None:
@@ -224,9 +244,7 @@ class PrimeSession:
         return str(text) if text is not None else None
 
     async def set_model(self, provider: str, model_id: str) -> Mapping[str, Any]:
-        return _mapping(
-            (await self.request("set_model", provider=provider, modelId=model_id)).data
-        )
+        return _mapping((await self.request("set_model", provider=provider, modelId=model_id)).data)
 
     async def available_models(self) -> list[Mapping[str, Any]]:
         data = _mapping((await self.request("get_available_models")).data)
@@ -234,9 +252,7 @@ class PrimeSession:
         return list(models) if isinstance(models, list) else []
 
     async def switch_session(self, session_path: str | Path) -> Mapping[str, Any]:
-        return _mapping(
-            (await self.request("switch_session", sessionPath=str(session_path))).data
-        )
+        return _mapping((await self.request("switch_session", sessionPath=str(session_path))).data)
 
     async def set_session_name(self, name: str) -> None:
         await self.request("set_session_name", name=name)
@@ -248,9 +264,7 @@ class PrimeSession:
         return _mapping((await self.request("clone")).data)
 
     async def compact(self, instructions: str | None = None) -> Mapping[str, Any]:
-        params: dict[str, Any] = (
-            {"customInstructions": instructions} if instructions else {}
-        )
+        params: dict[str, Any] = {"customInstructions": instructions} if instructions else {}
         return _mapping((await self.request("compact", **params)).data)
 
     async def refine(
@@ -265,9 +279,7 @@ class PrimeSession:
             params["instructions"] = instructions
         if rollback_id:
             params["rollbackId"] = rollback_id
-        return _mapping(
-            (await self.request("refine", timeout=self.refine_timeout, **params)).data
-        )
+        return _mapping((await self.request("refine", timeout=self.refine_timeout, **params)).data)
 
     async def _handle_ui_event(self, event: PrimeEvent) -> None:
         if event.type != "extension_ui_request" or self.ui_handler is None:

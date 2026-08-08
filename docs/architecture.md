@@ -23,8 +23,14 @@ fields without waiting for a client release.
 
 Process stderr is drained concurrently into a bounded buffer. Request timeout
 and process-exit exceptions include recent stderr, but the client never reads
-or logs arbitrary environment variables.
+or logs arbitrary environment variables. Optional standard-library log records
+contain lifecycle state and correlation metadata, never prompt or response
+payloads.
+
+The transport can be restarted after a normal close or unexpected exit. A new
+process receives fresh stderr state and event streams; request IDs remain
+monotonic within the Python object so application logs can correlate its full
+lifetime.
 
 The transport is deliberately dependency-free. Framework-specific adapters
 belong in their consuming projects rather than the protocol package.
-

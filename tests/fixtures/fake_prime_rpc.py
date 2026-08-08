@@ -30,6 +30,18 @@ for line in sys.stdin.buffer:
         emit({"type": "ui_result", "rawResponse": request})
         emit({"type": "agent_end"})
         continue
+    if command == "abort":
+        emit(
+            {
+                "id": request_id,
+                "type": "response",
+                "command": command,
+                "success": True,
+                "data": {},
+            }
+        )
+        emit({"type": "abort_seen"})
+        continue
     if command == "hang":
         continue
     if command == "exit":
@@ -78,6 +90,27 @@ for line in sys.stdin.buffer:
         if request.get("message") == "ui":
             waiting_for_ui = True
             emit({"type": "extension_ui_request", "id": "ui-1", "method": "confirm"})
+        elif request.get("message") == "tools":
+            emit({"type": "agent_start"})
+            emit(
+                {
+                    "type": "message_update",
+                    "assistantMessageEvent": {
+                        "type": "toolcall_start",
+                        "toolCallId": "tool-1",
+                        "toolName": "read",
+                    },
+                }
+            )
+            emit({"type": "tool_execution_start", "toolCallId": "tool-1"})
+            emit(
+                {
+                    "type": "tool_execution_end",
+                    "toolCallId": "tool-1",
+                    "result": {"content": "fixture"},
+                }
+            )
+            emit({"type": "agent_end"})
         else:
             emit({"type": "agent_start"})
             emit({"type": "turn_start"})

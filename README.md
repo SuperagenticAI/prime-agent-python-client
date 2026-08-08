@@ -42,7 +42,8 @@ uv add prime-agent-python-client
 
 For a one-off script without a project, use
 `uv run --with prime-agent-python-client your_script.py`. See the
-[installation guide](docs/installation.md) for source checkouts and upgrades.
+[installation guide](https://github.com/SuperagenticAI/prime-agent-python-client/blob/main/docs/installation.md)
+for source checkouts and upgrades.
 
 ## Quick start
 
@@ -59,11 +60,8 @@ async def main() -> None:
         model="claude-sonnet-4-20250514",
     ) as session:
         async for event in session.prompt_stream("Fix the failing tests"):
-            if event.type != "message_update":
-                continue
-            update = event.get("assistantMessageEvent", {})
-            if update.get("type") == "text_delta":
-                print(update.get("delta", ""), end="", flush=True)
+            if event.text_delta:
+                print(event.text_delta, end="", flush=True)
 
 
 asyncio.run(main())
@@ -93,6 +91,11 @@ async with PrimeSession(cwd=".") as session:
 Session operations include `new`, `switch_session`, `set_session_name`,
 `fork`, and `clone`. The lower-level `PrimeRpcTransport.request()` method makes
 new protocol commands usable before a convenience method is added.
+
+Both levels support explicit restart. `PrimeSession.restart()` repeats version
+detection and the readiness probe; `PrimeRpcTransport.restart()` replaces only
+the subprocess. Cancelling `prompt_stream()` asks Prime Agent to abort the
+active run before releasing the stream.
 
 ## Event compatibility
 
@@ -136,13 +139,14 @@ a protocol response, matching Prime Agent's fire-and-forget semantics.
 
 ## Compatibility
 
-The 0.1 line is tested against Prime Agent 0.7.0 and 0.7.1. Unknown versions
+The 0.2 line is tested against Prime Agent 0.7.0 and 0.7.1. Unknown versions
 are allowed because the RPC protocol is additive, but they are marked as
 untested:
 
 ```python
 assert session.compatibility is not None
 print(session.compatibility.tested)
+print(session.supports("compact"))
 ```
 
 The library supports Python 3.10 through 3.13 and has no runtime Python
@@ -157,18 +161,20 @@ understand.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Protocol changes should include a fake
-RPC fixture test and, where possible, validation against the public Prime Agent
-executable.
+See the
+[contribution guide](https://github.com/SuperagenticAI/prime-agent-python-client/blob/main/CONTRIBUTING.md).
+Protocol changes should include a fake RPC fixture test and, where possible,
+validation against the public Prime Agent executable.
 
 ## Documentation
 
-- [Installation](docs/installation.md)
-- [API guide](docs/api.md)
-- [Architecture](docs/architecture.md)
-- [Compatibility policy](docs/compatibility.md)
-- [Development](docs/development.md)
-- [Releasing](docs/releasing.md)
+- [Installation](https://github.com/SuperagenticAI/prime-agent-python-client/blob/main/docs/installation.md)
+- [API guide](https://github.com/SuperagenticAI/prime-agent-python-client/blob/main/docs/api.md)
+- [Architecture](https://github.com/SuperagenticAI/prime-agent-python-client/blob/main/docs/architecture.md)
+- [Compatibility policy](https://github.com/SuperagenticAI/prime-agent-python-client/blob/main/docs/compatibility.md)
+- [Development](https://github.com/SuperagenticAI/prime-agent-python-client/blob/main/docs/development.md)
+- [Releasing](https://github.com/SuperagenticAI/prime-agent-python-client/blob/main/docs/releasing.md)
+- [Launch announcement](https://github.com/SuperagenticAI/prime-agent-python-client/blob/main/docs/launch-announcement.md)
 
 ## License
 

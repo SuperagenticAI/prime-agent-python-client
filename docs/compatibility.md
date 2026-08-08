@@ -17,6 +17,5 @@ suite and a real `get_state` lifecycle smoke test pass. Breaking protocol
 changes require a new client minor release and a compatibility note in the
 changelog.
 
-The 0.1 client supports Python 3.10 through 3.13. The CI matrix exercises every
+The 0.2 client supports Python 3.10 through 3.13. The CI matrix exercises every
 supported minor version.
-

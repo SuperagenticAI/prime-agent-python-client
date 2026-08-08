@@ -36,6 +36,22 @@ class PrimeEvent:
     def get(self, key: str, default: Any = None) -> Any:
         return self.raw.get(key, default)
 
+    @property
+    def text_delta(self) -> str | None:
+        """Return assistant text carried by a Prime ``message_update`` event."""
+        if self.type != "message_update":
+            return None
+        update = self.raw.get("assistantMessageEvent")
+        if not isinstance(update, Mapping) or update.get("type") != "text_delta":
+            return None
+        delta = update.get("delta")
+        return str(delta) if delta is not None else None
+
+    @property
+    def is_terminal(self) -> bool:
+        """Return true when the event closes the active agent run."""
+        return self.type == "agent_end"
+
 
 @dataclass(frozen=True, slots=True)
 class PrimeResponse:
@@ -61,4 +77,3 @@ class PrimeVersion:
         if self.major is None or self.minor is None or self.patch is None:
             return None
         return f"{self.major}.{self.minor}.{self.patch}"
-

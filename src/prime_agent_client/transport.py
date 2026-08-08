@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import os
 from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
@@ -71,6 +72,7 @@ class PrimeRpcTransport:
         shutdown_timeout: float = 5.0,
         max_line_bytes: int = 16 * 1024 * 1024,
         stderr_limit: int = 64 * 1024,
+        logger: logging.Logger | None = None,
     ) -> None:
         if not command:
             raise ValueError("Prime Agent command cannot be empty")
@@ -82,6 +84,7 @@ class PrimeRpcTransport:
         self.shutdown_timeout = float(shutdown_timeout)
         self.max_line_bytes = int(max_line_bytes)
         self.stderr_limit = int(stderr_limit)
+        self.logger = logger or logging.getLogger("prime_agent_client.transport")
 
         self._process: asyncio.subprocess.Process | None = None
         self._stdout_task: asyncio.Task[None] | None = None
@@ -108,12 +111,30 @@ class PrimeRpcTransport:
     def stderr(self) -> str:
         return b"".join(self._stderr_chunks).decode("utf-8", errors="replace")
 
+    async def __aenter__(self) -> PrimeRpcTransport:
+        await self.start()
+        return self
+
+    async def __aexit__(self, *_args: object) -> None:
+        await self.close()
+
     async def start(self) -> None:
         if self.running:
             raise RuntimeError("Prime Agent RPC transport is already started")
+        if self._process is not None:
+            await self.close()
         process_env = os.environ.copy()
         process_env.update(self.env)
         self._closing = False
+        self._stderr_chunks.clear()
+        self._stderr_size = 0
+        self.logger.debug(
+            "Starting Prime Agent RPC process",
+            extra={
+                "prime_rpc_event": "process_start",
+                "prime_rpc_executable": self.command[0],
+            },
+        )
         self._process = await asyncio.create_subprocess_exec(
             *self.argv,
             cwd=str(self.cwd) if self.cwd is not None else None,
@@ -127,6 +148,11 @@ class PrimeRpcTransport:
         self._stderr_task = asyncio.create_task(self._read_stderr(), name="prime-rpc-stderr")
         self._wait_task = asyncio.create_task(self._watch_process(), name="prime-rpc-process")
 
+    async def restart(self) -> None:
+        """Close any current process and start a fresh RPC subprocess."""
+        await self.close()
+        await self.start()
+
     async def close(self) -> None:
         process = self._process
         if process is None:
@@ -138,17 +164,21 @@ class PrimeRpcTransport:
                 await process.stdin.wait_closed()
         try:
             await asyncio.wait_for(process.wait(), timeout=self.shutdown_timeout)
-        except TimeoutError:
+        except asyncio.TimeoutError:
             process.terminate()
             try:
                 await asyncio.wait_for(process.wait(), timeout=1.0)
-            except TimeoutError:
+            except asyncio.TimeoutError:
                 process.kill()
                 await process.wait()
         await self._finish_tasks()
         self._reject_pending(PrimeProcessExited(process.returncode, self.stderr))
         self._close_event_streams()
         self._process = None
+        self.logger.debug(
+            "Closed Prime Agent RPC process",
+            extra={"prime_rpc_event": "process_close", "prime_rpc_returncode": process.returncode},
+        )
 
     async def request(
         self,
@@ -167,10 +197,11 @@ class PrimeRpcTransport:
         loop = asyncio.get_running_loop()
         future: asyncio.Future[dict[str, Any]] = loop.create_future()
         self._pending[request_id] = future
+        log_context = {"prime_rpc_command": command, "prime_rpc_request_id": request_id}
+        self.logger.debug("Sending Prime Agent RPC request", extra=log_context)
 
         wire = (
-            json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-            + b"\n"
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8") + b"\n"
         )
         try:
             async with self._write_lock:
@@ -183,9 +214,13 @@ class PrimeRpcTransport:
         deadline = self.request_timeout if timeout is None else float(timeout)
         try:
             response = await asyncio.wait_for(asyncio.shield(future), timeout=deadline)
-        except TimeoutError as exc:
+        except asyncio.TimeoutError as exc:
             self._pending.pop(request_id, None)
             future.cancel()
+            self.logger.warning(
+                "Prime Agent RPC request timed out",
+                extra={**log_context, "prime_rpc_timeout": deadline},
+            )
             raise PrimeRequestTimeout(command, deadline, self.stderr) from exc
         except asyncio.CancelledError:
             self._pending.pop(request_id, None)
@@ -193,7 +228,9 @@ class PrimeRpcTransport:
             raise
 
         if response.get("success") is not True:
+            self.logger.warning("Prime Agent RPC request failed", extra=log_context)
             raise PrimeRpcError(command, str(response.get("error") or "Unknown error"), response)
+        self.logger.debug("Received Prime Agent RPC response", extra=log_context)
         return PrimeResponse(
             id=request_id,
             command=str(response.get("command") or command),
@@ -274,6 +311,13 @@ class PrimeRpcTransport:
             return
         returncode = await process.wait()
         if not self._closing:
+            self.logger.warning(
+                "Prime Agent RPC process exited",
+                extra={
+                    "prime_rpc_event": "process_exit",
+                    "prime_rpc_returncode": returncode,
+                },
+            )
             self._reject_pending(PrimeProcessExited(returncode, self.stderr))
             self._close_event_streams()
 

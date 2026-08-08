@@ -14,10 +14,16 @@ messages, and closes the subprocess when its async context exits.
 | Models | `set_model`, `available_models` |
 | Context | `compact`, `refine` |
 | Sessions | `new`, `switch_session`, `set_session_name`, `fork`, `clone` |
+| Lifecycle | `start`, `close`, `restart` |
 | Escape hatch | `request` |
 
 `prompt` acknowledges acceptance. Use `prompt_stream` or `prompt_and_wait` when
 the application needs to wait for the terminal `agent_end` event.
+
+`session.capabilities` contains the features declared for the detected Prime
+Agent release. `session.supports("compact")` is a convenient feature check.
+Compatibility metadata is advisory and does not hide the lower-level
+`request()` escape hatch.
 
 ## `PrimeRpcTransport`
 
@@ -27,17 +33,20 @@ Use the lower-level transport when building a custom session abstraction:
 from prime_agent_client import PrimeRpcTransport
 
 
-transport = PrimeRpcTransport(cwd="/path/to/project")
-await transport.start()
-try:
+async with PrimeRpcTransport(cwd="/path/to/project") as transport:
     response = await transport.request("get_state")
     print(response.data)
-finally:
-    await transport.close()
 ```
 
 Each call receives a generated correlation ID. Concurrent requests are safe,
-and pending calls fail immediately if the child process exits.
+pending calls fail immediately if the child process exits, and
+`await transport.restart()` replaces a failed or stale child process.
+
+Pass a standard-library `logging.Logger` through `PrimeSession(logger=...)` or
+`PrimeRpcTransport(logger=...)` to integrate lifecycle and request logs. Log
+records carry `prime_rpc_event`, `prime_rpc_command`, and
+`prime_rpc_request_id` attributes where applicable. Prompts, response payloads,
+and environment values are not logged.
 
 ## Events and responses
 
@@ -46,6 +55,8 @@ and pending calls fail immediately if the child process exits.
 - `PrimeEvent.type` exposes the event discriminator.
 - `PrimeEvent.raw` retains fields unknown to this client release.
 - `PrimeEvent.get()` provides mapping-style access without closing the schema.
+- `PrimeEvent.text_delta` extracts assistant text updates when present.
+- `PrimeEvent.is_terminal` identifies the final `agent_end` event.
 
 ## Errors
 
@@ -56,4 +67,3 @@ All client exceptions inherit from `PrimeAgentError`:
 - `PrimeProtocolError`
 - `PrimeRequestTimeout`
 - `PrimeRpcError`
-

@@ -38,6 +38,7 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --extra dev
       - run: uv run --frozen ruff check .
+      - run: uv run --frozen ruff format --check .
       - run: uv run --frozen mypy
       - run: uv run --frozen pytest --cov=prime_agent_client --cov-report=term-missing
 

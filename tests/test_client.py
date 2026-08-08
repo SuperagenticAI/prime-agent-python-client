@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 from pathlib import Path
 
@@ -22,14 +23,17 @@ FAKE_COMMAND = (sys.executable, str(FAKE_RPC))
 
 
 def test_package_version() -> None:
-    assert __version__ == "0.1.0"
+    assert __version__ == "0.2.0"
 
 
 def test_version_parser_and_compatibility_are_explicit() -> None:
     version = parse_version("prime-agent 0.7.1\n")
 
     assert version.normalized == "0.7.1"
-    assert compatibility_for(version).tested is True
+    compatibility = compatibility_for(version)
+    assert compatibility.tested is True
+    assert compatibility.supports("prompt") is True
+    assert compatibility.supports("imaginary-command") is False
     assert parse_version("development build").normalized is None
 
 
@@ -49,6 +53,17 @@ async def test_transport_correlates_concurrent_requests() -> None:
     assert transport.argv[-2:] == ("--mode", "rpc")
 
 
+async def test_transport_context_manager_closes_and_can_restart() -> None:
+    transport = PrimeRpcTransport(command=FAKE_COMMAND)
+
+    async with transport:
+        assert (await transport.request("echo", value="first")).data == "first"
+        await transport.restart()
+        assert (await transport.request("echo", value="second")).data == "second"
+
+    assert transport.running is False
+
+
 async def test_session_uses_readiness_probe_and_preserves_unknown_events() -> None:
     async with PrimeSession(command=FAKE_COMMAND) as session:
         events = await session.prompt_and_wait("hello")
@@ -58,8 +73,12 @@ async def test_session_uses_readiness_probe_and_preserves_unknown_events() -> No
     assert session.version.normalized == "0.7.1"
     assert session.compatibility is not None
     assert session.compatibility.tested is True
+    assert session.supports("events") is True
+    assert "abort" in session.capabilities
     assert state["sessionId"] == "fake-session"
     future = next(event for event in events if event.type == "future_prime_event")
+    text = next(event for event in events if event.text_delta is not None)
+    assert text.text_delta == "done"
     assert future.get("text") == "left\u2028right\u2029done"
     assert future.get("extra") == {"preserved": True}
 
@@ -87,6 +106,19 @@ async def test_request_timeout_cleans_up_pending_request() -> None:
         await transport.close()
 
     assert response.data == "still-alive"
+
+
+async def test_cancelled_request_is_removed_without_poisoning_transport() -> None:
+    async with PrimeRpcTransport(command=FAKE_COMMAND) as transport:
+        pending = asyncio.create_task(transport.request("hang"))
+        await asyncio.sleep(0)
+        pending.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await pending
+
+        response = await transport.request("echo", value="after-cancel")
+
+    assert response.data == "after-cancel"
 
 
 async def test_process_death_rejects_pending_request_and_captures_stderr() -> None:
@@ -132,6 +164,49 @@ async def test_ui_requests_are_answered_without_typescript_host() -> None:
         "id": "ui-1",
         "confirmed": True,
     }
+
+
+async def test_tool_lifecycle_events_are_streamed_in_wire_order() -> None:
+    async with PrimeSession(command=FAKE_COMMAND) as session:
+        events = await session.prompt_and_wait("tools")
+
+    assert [event.type for event in events] == [
+        "agent_start",
+        "message_update",
+        "tool_execution_start",
+        "tool_execution_end",
+        "agent_end",
+    ]
+    assert events[1].get("assistantMessageEvent")["toolCallId"] == "tool-1"
+    assert events[3].get("result") == {"content": "fixture"}
+
+
+async def test_prompt_task_cancellation_aborts_active_run() -> None:
+    observed = []
+    async with PrimeSession(command=FAKE_COMMAND) as session:
+        unsubscribe = session.transport.add_event_callback(observed.append)
+        pending = asyncio.create_task(session.prompt_and_wait("stall", timeout=10))
+        await asyncio.sleep(0.02)
+        pending.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await pending
+        await asyncio.sleep(0)
+        unsubscribe()
+
+    assert any(event.type == "abort_seen" for event in observed)
+
+
+async def test_transport_emits_structured_lifecycle_and_request_logs(caplog) -> None:
+    caplog.set_level(logging.DEBUG, logger="prime_agent_client.transport")
+
+    async with PrimeRpcTransport(command=FAKE_COMMAND) as transport:
+        await transport.request("echo", value="logged")
+
+    request_record = next(
+        record for record in caplog.records if record.message == "Sending Prime Agent RPC request"
+    )
+    assert request_record.prime_rpc_command == "echo"
+    assert request_record.prime_rpc_request_id.startswith("py_")
 
 
 async def test_prompt_stream_timeout_aborts_the_active_run() -> None:

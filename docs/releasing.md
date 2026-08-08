@@ -23,6 +23,7 @@ Publishing. No long-lived PyPI token should be stored in repository secrets.
    ```bash
    uv sync --locked --extra dev
    uv run ruff check .
+   uv run ruff format --check .
    uv run mypy
    uv run pytest
    uv build
@@ -39,4 +40,3 @@ Publishing. No long-lived PyPI token should be stored in repository secrets.
 
 The tag workflow rebuilds and smoke-tests both artifacts before publishing.
 The PyPA publish action uploads provenance attestations automatically.
-
