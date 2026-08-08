@@ -1,0 +1,9 @@
+Prime Agent Python Client
+Copyright 2026 Superagentic AI
+
+This is an independent, community-maintained integration. It is not an
+official Prime Intellect product and is not endorsed by Prime Intellect.
+
+Prime Agent is available separately from Prime Intellect under the MIT
+License. This package communicates with its documented public RPC interface
+and does not redistribute the Prime Agent executable.
