@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 from pathlib import Path
 
 from prime_agent_client import PrimeSession
@@ -19,6 +20,7 @@ async def run(repository: Path, prompt: str, provider: str | None, model: str | 
             if event.text_delta:
                 print(event.text_delta, end="", flush=True)
         print()
+        print(json.dumps(await session.stats(), indent=2, sort_keys=True))
 
 
 def main() -> None:

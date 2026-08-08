@@ -45,6 +45,9 @@ For a one-off script without a project, use
 [installation guide](https://github.com/SuperagenticAI/prime-agent-python-client/blob/main/docs/installation.md)
 for source checkouts and upgrades.
 
+For a complete standalone and SuperQode walkthrough, use the
+[recordable demo](examples/README.md).
+
 ## Quick start
 
 ```python
@@ -174,7 +177,6 @@ validation against the public Prime Agent executable.
 - [Compatibility policy](https://github.com/SuperagenticAI/prime-agent-python-client/blob/main/docs/compatibility.md)
 - [Development](https://github.com/SuperagenticAI/prime-agent-python-client/blob/main/docs/development.md)
 - [Releasing](https://github.com/SuperagenticAI/prime-agent-python-client/blob/main/docs/releasing.md)
-- [Launch announcement](https://github.com/SuperagenticAI/prime-agent-python-client/blob/main/docs/launch-announcement.md)
 
 ## License
 
