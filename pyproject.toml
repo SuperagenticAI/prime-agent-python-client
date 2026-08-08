@@ -67,4 +67,5 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.10"
 strict = true
+mypy_path = "src"
 packages = ["prime_agent_client"]
