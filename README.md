@@ -37,8 +37,12 @@ prime-agent
 Then install the Python client:
 
 ```bash
-pip install prime-agent-python-client
+uv add prime-agent-python-client
 ```
+
+For a one-off script without a project, use
+`uv run --with prime-agent-python-client your_script.py`. See the
+[installation guide](docs/installation.md) for source checkouts and upgrades.
 
 ## Quick start
 
@@ -156,6 +160,15 @@ understand.
 See [CONTRIBUTING.md](CONTRIBUTING.md). Protocol changes should include a fake
 RPC fixture test and, where possible, validation against the public Prime Agent
 executable.
+
+## Documentation
+
+- [Installation](docs/installation.md)
+- [API guide](docs/api.md)
+- [Architecture](docs/architecture.md)
+- [Compatibility policy](docs/compatibility.md)
+- [Development](docs/development.md)
+- [Releasing](docs/releasing.md)
 
 ## License
 

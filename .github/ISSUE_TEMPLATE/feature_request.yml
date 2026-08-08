@@ -1,0 +1,17 @@
+name: Feature request
+description: Propose an additive RPC command or client capability
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use case
+    validations:
+      required: true
+  - type: textarea
+    id: protocol
+    attributes:
+      label: Prime Agent protocol reference
+      description: Link the upstream command or event documentation when applicable.
+
