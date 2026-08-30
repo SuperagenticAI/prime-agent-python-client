@@ -215,3 +215,16 @@ async def test_prompt_stream_timeout_aborts_the_active_run() -> None:
             await session.prompt_and_wait("stall")
 
     assert raised.value.command == "prompt_events"
+
+
+async def test_prompt_stream_timeout_measures_inactivity_not_total_runtime() -> None:
+    async with PrimeSession(command=FAKE_COMMAND, prompt_timeout=0.05) as session:
+        events = await session.prompt_and_wait("active-beyond-timeout")
+
+    assert [event.type for event in events] == [
+        "agent_start",
+        "progress",
+        "progress",
+        "progress",
+        "agent_end",
+    ]

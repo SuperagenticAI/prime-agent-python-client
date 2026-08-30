@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from typing import Any
 
 
@@ -86,6 +87,13 @@ for line in sys.stdin.buffer:
 
     if command == "prompt":
         if request.get("message") == "stall":
+            continue
+        if request.get("message") == "active-beyond-timeout":
+            emit({"type": "agent_start"})
+            for index in range(3):
+                time.sleep(0.03)
+                emit({"type": "progress", "index": index})
+            emit({"type": "agent_end"})
             continue
         if request.get("message") == "ui":
             waiting_for_ui = True
