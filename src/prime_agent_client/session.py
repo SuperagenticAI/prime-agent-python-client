@@ -167,15 +167,16 @@ class PrimeSession:
     ) -> AsyncIterator[PrimeEvent]:
         stream = self.events()
         timeout_seconds = self.prompt_timeout if timeout is None else float(timeout)
-        deadline = asyncio.get_running_loop().time() + timeout_seconds
         try:
             await self.prompt(message, images=images)
             while True:
                 try:
-                    remaining = deadline - asyncio.get_running_loop().time()
-                    if remaining <= 0:
-                        raise asyncio.TimeoutError
-                    event = await asyncio.wait_for(stream.__anext__(), timeout=remaining)
+                    # Agent turns can legitimately run for hours. Treat the prompt
+                    # timeout as an inactivity limit, not a wall-clock deadline, so
+                    # a live event stream is never aborted merely for being long.
+                    event = await asyncio.wait_for(
+                        stream.__anext__(), timeout=timeout_seconds
+                    )
                 except asyncio.TimeoutError as exc:
                     with contextlib.suppress(Exception):
                         await self.abort()
